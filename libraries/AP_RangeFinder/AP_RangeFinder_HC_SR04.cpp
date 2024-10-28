@@ -106,7 +106,8 @@ void AP_RangeFinder_HC_SR04::update(void)
     } else {
         // gcs().send_text(MAV_SEVERITY_WARNING, "Pong!");
         // a new reading - convert time to distance
-        state.distance_m = (value_us * (1.0/58.0f)) * 0.01f;  // 58 is from datasheet, mult for performance
+        // state.distance_m = (value_us * (1.0/58.0f)) * 0.01f;  // 58 is from datasheet, mult for performance 340*2/40000 = 1/58 =0.0170, 340 speed of sound 10.27.
+        state.distance_m = (value_us * (1.0/58.3f)) * 0.01f;  // 58 is from datasheet, mult for performance 340*2/40000 = 1/58 =0.0170, 340 speed of sound 10.27
 
         // glitch remover: measurement is greater than .5m from last.
         // the SR-04 seeems to suffer from single-measurement glitches
