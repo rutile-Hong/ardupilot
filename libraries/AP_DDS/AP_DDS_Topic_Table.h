@@ -4,6 +4,7 @@
 #include "sensor_msgs/msg/BatteryState.h"
 #include "geographic_msgs/msg/GeoPoseStamped.h"
 #include "geometry_msgs/msg/Vector3Stamped.h"
+#include "ardupilot_msgs/msg/DirectPWM.h"
 #if AP_DDS_IMU_PUB_ENABLED
 #include "sensor_msgs/msg/Imu.h"
 #endif //AP_DDS_IMU_PUB_ENABLED
@@ -27,6 +28,10 @@ enum class TopicIndex: uint8_t {
 #if AP_DDS_BATTERY_STATE_PUB_ENABLED
     BATTERY_STATE_PUB,
 #endif // AP_DDS_BATTERY_STATE_PUB_ENABLED
+#if AP_DDS_RANGEFINDER_PUB_ENABLED                    // 0723
+    RANGEFINDER0_PUB,
+    RANGEFINDER1_PUB,                                 // 0723
+#endif                                       // 0723
 #if AP_DDS_IMU_PUB_ENABLED
     IMU_PUB,
 #endif //AP_DDS_IMU_PUB_ENABLED
@@ -51,6 +56,9 @@ enum class TopicIndex: uint8_t {
 #if AP_DDS_JOY_SUB_ENABLED
     JOY_SUB,
 #endif // AP_DDS_JOY_SUB_ENABLED
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+    DIRECT_PWM_SUB,
+#endif// AP_DDS_DIRECT_PWM_SUB_ENABLED
 #if AP_DDS_DYNAMIC_TF_SUB_ENABLED
     DYNAMIC_TRANSFORMS_SUB,
 #endif // AP_DDS_DYNAMIC_TF_SUB_ENABLED
@@ -142,6 +150,52 @@ constexpr struct AP_DDS_Client::Topic_table AP_DDS_Client::topics[] = {
         },
     },
 #endif // AP_DDS_BATTERY_STATE_PUB_ENABLED
+#if AP_DDS_RANGEFINDER_PUB_ENABLED
+    {
+        .topic_id = to_underlying(TopicIndex::RANGEFINDER0_PUB),
+        .pub_id = to_underlying(TopicIndex::RANGEFINDER0_PUB),
+        .sub_id = to_underlying(TopicIndex::RANGEFINDER0_PUB),
+        .dw_id = uxrObjectId{
+            .id = to_underlying(TopicIndex::RANGEFINDER0_PUB),
+            .type = UXR_DATAWRITER_ID
+        },
+        .dr_id = uxrObjectId{
+            .id = to_underlying(TopicIndex::RANGEFINDER0_PUB),
+            .type = UXR_DATAREADER_ID
+        },
+        .topic_rw = Topic_rw::DataWriter,
+        .topic_name = "rt/ap/rangefinder/range0",
+        .type_name = "sensor_msgs::msg::dds_::Range_",
+        .qos = {
+            .durability = UXR_DURABILITY_VOLATILE,
+            .reliability = UXR_RELIABILITY_BEST_EFFORT,
+            .history = UXR_HISTORY_KEEP_LAST,
+            .depth = 5,
+        },
+    },
+    {
+        .topic_id = to_underlying(TopicIndex::RANGEFINDER1_PUB),
+        .pub_id = to_underlying(TopicIndex::RANGEFINDER1_PUB),
+        .sub_id = to_underlying(TopicIndex::RANGEFINDER1_PUB),
+        .dw_id = uxrObjectId{
+            .id = to_underlying(TopicIndex::RANGEFINDER1_PUB),
+            .type = UXR_DATAWRITER_ID
+        },
+        .dr_id = uxrObjectId{
+            .id = to_underlying(TopicIndex::RANGEFINDER1_PUB),
+            .type = UXR_DATAREADER_ID
+        },
+        .topic_rw = Topic_rw::DataWriter,
+        .topic_name = "rt/ap/rangefinder/range1",
+        .type_name = "sensor_msgs::msg::dds_::Range_",
+        .qos = {
+            .durability = UXR_DURABILITY_VOLATILE,
+            .reliability = UXR_RELIABILITY_BEST_EFFORT,
+            .history = UXR_HISTORY_KEEP_LAST,
+            .depth = 5,
+        },
+    },
+#endif // AP_DDS_RANGEFINDER_PUB_ENABLED
 #if AP_DDS_IMU_PUB_ENABLED
     {
         .topic_id = to_underlying(TopicIndex::IMU_PUB),
@@ -286,6 +340,37 @@ constexpr struct AP_DDS_Client::Topic_table AP_DDS_Client::topics[] = {
         },
     },
 #endif // AP_DDS_JOY_SUB_ENABLED
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+{
+    .topic_id = to_underlying(TopicIndex::DIRECT_PWM_SUB),
+    .pub_id = to_underlying(TopicIndex::DIRECT_PWM_SUB),
+    .sub_id = to_underlying(TopicIndex::DIRECT_PWM_SUB),
+
+    .dw_id = uxrObjectId{
+        .id = to_underlying(TopicIndex::DIRECT_PWM_SUB),
+        .type = UXR_DATAWRITER_ID
+    },
+
+    .dr_id = uxrObjectId{
+        .id = to_underlying(TopicIndex::DIRECT_PWM_SUB),
+        .type = UXR_DATAREADER_ID
+    },
+
+    .topic_rw = Topic_rw::DataReader,
+
+    .topic_name = "rt/ap/direct_pwm",
+
+    .type_name =
+        "ardupilot_msgs::msg::dds_::DirectPWM_",
+
+    .qos = {
+        .durability = UXR_DURABILITY_VOLATILE,
+        .reliability = UXR_RELIABILITY_BEST_EFFORT,
+        .history = UXR_HISTORY_KEEP_LAST,
+        .depth = 1,
+    },
+},
+#endif // AP_DDS_DIRECT_PWM_SUB_ENABLED
 #if AP_DDS_DYNAMIC_TF_SUB_ENABLED
     {
         .topic_id = to_underlying(TopicIndex::DYNAMIC_TRANSFORMS_SUB),

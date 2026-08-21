@@ -22,12 +22,18 @@
 #if AP_DDS_BATTERY_STATE_PUB_ENABLED
 #include "sensor_msgs/msg/BatteryState.h"
 #endif // AP_DDS_BATTERY_STATE_PUB_ENABLED
+#if AP_DDS_RANGEFINDER_PUB_ENABLED
+#include "sensor_msgs/msg/Range.h"
+#endif // AP_DDS_RANGEFINDER_PUB_ENABLED
 #if AP_DDS_IMU_PUB_ENABLED
 #include "sensor_msgs/msg/Imu.h"
 #endif // AP_DDS_IMU_PUB_ENABLED
 #if AP_DDS_JOY_SUB_ENABLED
 #include "sensor_msgs/msg/Joy.h"
 #endif // AP_DDS_JOY_SUB_ENABLED
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+#include "ardupilot_msgs/msg/DirectPWM.h"
+#endif // AP_DDS_DIRECT_PWM_SUB_ENABLED
 #if AP_DDS_LOCAL_POSE_PUB_ENABLED
 #include "geometry_msgs/msg/PoseStamped.h"
 #endif // AP_DDS_LOCAL_POSE_PUB_ENABLED
@@ -156,6 +162,16 @@ private:
     static void update_topic(sensor_msgs_msg_BatteryState& msg, const uint8_t instance);
 #endif // AP_DDS_BATTERY_STATE_PUB_ENABLED
 
+#if AP_DDS_RANGEFINDER_PUB_ENABLED
+    sensor_msgs_msg_Range rangefinder0_topic;
+    sensor_msgs_msg_Range rangefinder1_topic;
+    uint64_t last_rangefinder0_time_ms;
+    uint64_t last_rangefinder1_time_ms;
+    void write_rangefinder0_topic();
+    void write_rangefinder1_topic();
+    static bool update_topic(sensor_msgs_msg_Range& msg, const uint8_t instance);
+#endif // AP_DDS_RANGEFINDER_PUB_ENABLED
+
 #if AP_DDS_NAVSATFIX_PUB_ENABLED
     sensor_msgs_msg_NavSatFix nav_sat_fix_topic;
     // The last ms timestamp AP_DDS wrote a NavSatFix message
@@ -195,6 +211,18 @@ private:
     // incoming joystick data
     static sensor_msgs_msg_Joy rx_joy_topic;
 #endif // AP_DDS_JOY_SUB_ENABLED
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+
+	static ardupilot_msgs_msg_DirectPWM rx_direct_pwm_topic;
+
+	volatile uint16_t direct_pwm1 = 1000;
+	volatile uint16_t direct_pwm2 = 1000;
+
+	volatile bool direct_pwm_enabled = false;
+
+	volatile uint32_t direct_pwm_last_ms = 0;
+
+#endif // AP_DDS_DIRECT_PWM_SUB_ENABLED
 #if AP_DDS_VEL_CTRL_ENABLED
     // incoming REP147 velocity control
     static geometry_msgs_msg_TwistStamped rx_velocity_control_topic;
@@ -364,8 +392,37 @@ public:
         const uxrQoS_t qos;
     };
     static const struct Service_table services[];
+
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+
+	bool direct_pwm_active() const
+	{
+		if (!direct_pwm_enabled) {
+		    return false;
+		}
+
+		// communication watchdog
+		if (AP_HAL::millis() - direct_pwm_last_ms > 100) {
+		    return false;
+		}
+
+		return true;
+	}
+
+	uint16_t get_direct_pwm1() const
+	{
+		return direct_pwm1;
+	}
+
+	uint16_t get_direct_pwm2() const
+	{
+		return direct_pwm2;
+	}
+
+#endif // AP_DDS_DIRECT_PWM_SUB_ENABLED    
 };
 
 #endif // AP_DDS_ENABLED
+
 
 

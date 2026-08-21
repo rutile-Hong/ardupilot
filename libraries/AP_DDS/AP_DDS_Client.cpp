@@ -12,10 +12,12 @@
 #include <AP_InertialSensor/AP_InertialSensor.h>
 #include <GCS_MAVLink/GCS.h>
 #include <AP_BattMonitor/AP_BattMonitor.h>
+#include <AP_RangeFinder/AP_RangeFinder.h>   // 0723
+#include <AP_RangeFinder/AP_RangeFinder_Backend.h>   // 0723
 #include <AP_AHRS/AP_AHRS.h>
 #if AP_DDS_ARM_SERVER_ENABLED
 #include <AP_Arming/AP_Arming.h>
-# endif // AP_DDS_ARM_SERVER_ENABLED
+#endif // AP_DDS_ARM_SERVER_ENABLED
 #include <AP_Vehicle/AP_Vehicle.h>
 #include <AP_ExternalControl/AP_ExternalControl_config.h>
 
@@ -31,6 +33,10 @@
 #if AP_DDS_VTOL_TAKEOFF_SERVER_ENABLED
 #include "ardupilot_msgs/srv/Takeoff.h"
 #endif // AP_DDS_VTOL_TAKEOFF_SERVER_ENABLED
+
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+#include "ardupilot_msgs/msg/DirectPWM.h"
+#endif // AP_DDS_DIRECT_PWM_SUB_ENABLED
 
 #if AP_EXTERNAL_CONTROL_ENABLED
 #include "AP_DDS_ExternalControl.h"
@@ -52,6 +58,10 @@ static constexpr uint16_t DELAY_TIME_TOPIC_MS = AP_DDS_DELAY_TIME_TOPIC_MS;
 #if AP_DDS_BATTERY_STATE_PUB_ENABLED
 static constexpr uint16_t DELAY_BATTERY_STATE_TOPIC_MS = AP_DDS_DELAY_BATTERY_STATE_TOPIC_MS;
 #endif // AP_DDS_BATTERY_STATE_PUB_ENABLED
+#if AP_DDS_RANGEFINDER_PUB_ENABLED       // 0723
+static constexpr uint16_t DELAY_RANGEFINDER_TOPIC_MS =    // 0723
+    AP_DDS_DELAY_RANGEFINDER_TOPIC_MS;                // 0723
+#endif                                  // 0723
 #if AP_DDS_IMU_PUB_ENABLED
 static constexpr uint16_t DELAY_IMU_TOPIC_MS = AP_DDS_DELAY_IMU_TOPIC_MS;
 #endif // AP_DDS_IMU_PUB_ENABLED
@@ -81,6 +91,10 @@ static constexpr uint16_t DELAY_PING_MS = 500;
 #if AP_DDS_JOY_SUB_ENABLED
 sensor_msgs_msg_Joy AP_DDS_Client::rx_joy_topic {};
 #endif // AP_DDS_JOY_SUB_ENABLED
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+ardupilot_msgs_msg_DirectPWM
+AP_DDS_Client::rx_direct_pwm_topic {};
+#endif // AP_DDS_DIRECT_PWM_SUB_ENABLED
 tf2_msgs_msg_TFMessage AP_DDS_Client::rx_dynamic_transforms_topic {};
 #if AP_DDS_VEL_CTRL_ENABLED
 geometry_msgs_msg_TwistStamped AP_DDS_Client::rx_velocity_control_topic {};
@@ -187,6 +201,7 @@ void AP_DDS_Client::update_topic(builtin_interfaces_msg_Time& msg)
 
 }
 #endif // AP_DDS_TIME_PUB_ENABLED
+
 
 #if AP_DDS_NAVSATFIX_PUB_ENABLED
 bool AP_DDS_Client::update_topic(sensor_msgs_msg_NavSatFix& msg, const uint8_t instance)
@@ -392,6 +407,64 @@ void AP_DDS_Client::update_topic(sensor_msgs_msg_BatteryState& msg, const uint8_
 }
 #endif // AP_DDS_BATTERY_STATE_PUB_ENABLED
 
+#if AP_DDS_RANGEFINDER_PUB_ENABLED      //0723
+
+bool AP_DDS_Client::update_topic(
+    sensor_msgs_msg_Range& msg,
+    const uint8_t instance)
+{
+    RangeFinder *rangefinder = AP::rangefinder();
+
+    if (rangefinder == nullptr) {
+        return false;
+    }
+
+    if (instance >= rangefinder->num_sensors()) {
+        return false;
+    }
+
+    AP_RangeFinder_Backend *backend =
+        rangefinder->get_backend(instance);
+
+    if (backend == nullptr) {
+        return false;
+    }
+
+    update_topic(msg.header.stamp);
+
+    hal.util->snprintf(
+        msg.header.frame_id,
+        sizeof(msg.header.frame_id),
+        "rangefinder%u",
+        static_cast<unsigned>(instance)
+    );
+
+    // sensor_msgs/msg/Range:
+    // 0 = ULTRASOUND
+    // 1 = INFRARED
+    msg.radiation_type = 1;
+
+    // Approximately 2 degrees in radians.
+    msg.field_of_view = 0.035F;
+
+    // ArduPilot min/max accessors return centimeters.
+    msg.min_range =
+        static_cast<float>(backend->min_distance_cm()) * 0.01F;
+
+    msg.max_range =
+        static_cast<float>(backend->max_distance_cm()) * 0.01F;
+
+    // backend->distance() is already meters.
+    if (backend->status() == RangeFinder::Status::Good) {
+        msg.range = backend->distance();
+    } else {
+        msg.range = NAN;
+    }
+
+    return true;
+}
+
+#endif // AP_DDS_RANGEFINDER_PUB_ENABLED
 #if AP_DDS_LOCAL_POSE_PUB_ENABLED
 void AP_DDS_Client::update_topic(geometry_msgs_msg_PoseStamped& msg)
 {
@@ -694,6 +767,44 @@ void AP_DDS_Client::on_topic(uxrSession* uxr_session, uxrObjectId object_id, uin
         break;
     }
 #endif // AP_DDS_JOY_SUB_ENABLED
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+
+	case topics[
+		to_underlying(TopicIndex::DIRECT_PWM_SUB)
+	    ].dr_id.id:
+	{
+	    const bool success =
+		ardupilot_msgs_msg_DirectPWM_deserialize_topic(
+		    ub,
+		    &rx_direct_pwm_topic
+		);
+
+	    if (!success) {
+		break;
+	    }
+
+	    direct_pwm1 = constrain_int16(
+		rx_direct_pwm_topic.pwm1,
+		1000,
+		2000
+	    );
+
+	    direct_pwm2 = constrain_int16(
+		rx_direct_pwm_topic.pwm2,
+		1000,
+		2000
+	    );
+
+	    direct_pwm_enabled =
+		rx_direct_pwm_topic.enable;
+
+	    direct_pwm_last_ms =
+		AP_HAL::millis();
+
+	    break;
+	}
+
+#endif // AP_DDS_DIRECT_PWM_SUB_ENABLED
 #if AP_DDS_DYNAMIC_TF_SUB_ENABLED
     case topics[to_underlying(TopicIndex::DYNAMIC_TRANSFORMS_SUB)].dr_id.id: {
         const bool success = tf2_msgs_msg_TFMessage_deserialize_topic(ub, &rx_dynamic_transforms_topic);
@@ -1415,6 +1526,83 @@ void AP_DDS_Client::write_battery_state_topic()
     }
 }
 #endif // AP_DDS_BATTERY_STATE_PUB_ENABLED
+#if AP_DDS_RANGEFINDER_PUB_ENABLED
+void AP_DDS_Client::write_rangefinder0_topic()
+{
+    WITH_SEMAPHORE(csem);
+
+    if (!connected) {
+        return;
+    }
+
+    ucdrBuffer ub {};
+
+    const uint32_t topic_size =
+        sensor_msgs_msg_Range_size_of_topic(
+            &rangefinder0_topic,
+            0);
+
+    const bool prepared = uxr_prepare_output_stream(
+        &session,
+        reliable_out,
+        topics[to_underlying(
+            TopicIndex::RANGEFINDER0_PUB)].dw_id,
+        &ub,
+        topic_size);
+
+    if (!prepared) {
+        return;
+    }
+
+    const bool success =
+        sensor_msgs_msg_Range_serialize_topic(
+            &ub,
+            &rangefinder0_topic);
+
+    if (!success) {
+        return;
+    }
+}
+
+void AP_DDS_Client::write_rangefinder1_topic()
+{
+    WITH_SEMAPHORE(csem);
+
+    if (!connected) {
+        return;
+    }
+
+    ucdrBuffer ub {};
+
+    const uint32_t topic_size =
+        sensor_msgs_msg_Range_size_of_topic(
+            &rangefinder1_topic,
+            0);
+
+    const bool prepared = uxr_prepare_output_stream(
+        &session,
+        reliable_out,
+        topics[to_underlying(
+            TopicIndex::RANGEFINDER1_PUB)].dw_id,
+        &ub,
+        topic_size);
+
+    if (!prepared) {
+        return;
+    }
+
+    const bool success =
+        sensor_msgs_msg_Range_serialize_topic(
+            &ub,
+            &rangefinder1_topic);
+
+    if (!success) {
+        return;
+    }
+}
+
+#endif // AP_DDS_RANGEFINDER_PUB_ENABLED
+
 
 #if AP_DDS_LOCAL_POSE_PUB_ENABLED
 void AP_DDS_Client::write_local_pose_topic()
@@ -1561,6 +1749,25 @@ void AP_DDS_Client::update()
         last_battery_state_time_ms = cur_time_ms;
     }
 #endif // AP_DDS_BATTERY_STATE_PUB_ENABLED
+#if AP_DDS_RANGEFINDER_PUB_ENABLED
+    if (cur_time_ms - last_rangefinder0_time_ms >
+        DELAY_RANGEFINDER_TOPIC_MS) {
+
+        if (update_topic(rangefinder0_topic, 0)) {
+            write_rangefinder0_topic();
+        }
+        last_rangefinder0_time_ms = cur_time_ms;
+    }
+    if (cur_time_ms - last_rangefinder1_time_ms >
+        DELAY_RANGEFINDER_TOPIC_MS) {
+
+        if (update_topic(rangefinder1_topic, 1)) {
+            write_rangefinder1_topic();
+        }
+        last_rangefinder1_time_ms = cur_time_ms;
+    }
+#endif
+
 #if AP_DDS_LOCAL_POSE_PUB_ENABLED
     if (cur_time_ms - last_local_pose_time_ms > DELAY_LOCAL_POSE_TOPIC_MS) {
         update_topic(local_pose_topic);

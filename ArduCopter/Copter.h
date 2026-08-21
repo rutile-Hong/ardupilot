@@ -72,6 +72,7 @@
 #include <AP_OpticalFlow/AP_OpticalFlow.h>
 #include <AP_Winch/AP_Winch_config.h>
 #include <AP_SurfaceDistance/AP_SurfaceDistance.h>
+#include <AP_DDS/AP_DDS_config.h>
 
 // Configuration
 #include "defines.h"
@@ -261,6 +262,9 @@ private:
     // helper function to get inertially interpolated rangefinder height.
     bool get_rangefinder_height_interpolated_cm(int32_t& ret) const;
 
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+	void direct_pwm_output();
+#endif
 #if AP_RANGEFINDER_ENABLED
     class SurfaceTracking {
     public:
