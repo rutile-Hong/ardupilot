@@ -91,7 +91,7 @@ void AP_RangeFinder_DroneCAN::update()
         return;
     }
 
-    state.distance_m = _distance_m;
+    state.distance_m = 1.0f - _distance_m;
     state.last_reading_ms = _last_reading_ms;
     new_data = false;
 

@@ -1,5 +1,9 @@
 #include "Copter.h"
 
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+#include <AP_DDS/AP_DDS_Client.h>
+#endif
+
 #define ARM_DELAY               20  // called at 10hz so 2 seconds
 #define DISARM_DELAY            20  // called at 10hz so 2 seconds
 #define LOST_VEHICLE_DELAY      10  // called at 10hz so 1 second
@@ -103,6 +107,10 @@ void Copter::motors_output(bool full_push)
     if (ap.motor_test) {
         // check if we are performing the motor test
         motor_test_output();
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+    } else if (dds_client != nullptr && dds_client->direct_pwm_active()) {
+        direct_pwm_output();
+#endif
     } else {
         // send output signals to motors
         flightmode->output_to_motors();
@@ -153,3 +161,25 @@ void Copter::lost_vehicle_check()
         }
     }
 }
+
+#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+void Copter::direct_pwm_output()
+{
+    constexpr uint16_t PWM_MIN = 1000;
+    constexpr uint16_t PWM_MAX = 2000;
+
+    uint16_t pwm1 = PWM_MIN;
+    uint16_t pwm2 = PWM_MIN;
+
+    // Require normal ArduPilot arming and a live DDS command.
+    if (motors->armed() && dds_client != nullptr && dds_client->direct_pwm_active()) {
+        pwm1 = constrain_int16(dds_client->get_direct_pwm1(), PWM_MIN, PWM_MAX);
+        pwm2 = constrain_int16(dds_client->get_direct_pwm2(), PWM_MIN, PWM_MAX);
+    }
+
+    // Cube output channels are zero indexed: channel 0 = MAIN1, channel 1 = MAIN2.
+    hal.rcout->write(0, pwm1);
+    hal.rcout->write(1, pwm2);
+}
+
+#endif

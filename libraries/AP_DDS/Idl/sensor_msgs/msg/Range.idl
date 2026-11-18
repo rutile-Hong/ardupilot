@@ -1,0 +1,22 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+
+#include "std_msgs/msg/Header.idl"
+
+module sensor_msgs {
+  module msg {
+    module Range_Constants {
+      const octet ULTRASOUND = 0;
+      const octet INFRARED = 1;
+    };
+
+    struct Range {
+      std_msgs::msg::Header header;
+
+      octet radiation_type;
+      float field_of_view;
+      float min_range;
+      float max_range;
+      float range;
+    };
+  };
+};
