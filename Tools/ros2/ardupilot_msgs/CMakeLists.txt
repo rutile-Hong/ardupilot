@@ -19,6 +19,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Airspeed.msg"
   "msg/MotorPWM.msg"
   "msg/DirectPWM.msg"
+  "msg/RCOut.msg"
   "srv/ArmMotors.srv"
   "srv/ModeSwitch.srv"
   "srv/Takeoff.srv"

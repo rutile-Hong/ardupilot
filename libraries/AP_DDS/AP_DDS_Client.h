@@ -38,6 +38,9 @@
 #if AP_DDS_DIRECT_PWM_SUB_ENABLED
 #include "ardupilot_msgs/msg/DirectPWM.h"
 #endif // AP_DDS_DIRECT_PWM_SUB_ENABLED
+#if AP_DDS_RCOUT_PUB_ENABLED
+#include "ardupilot_msgs/msg/RCOut.h"
+#endif // AP_DDS_RCOUT_PUB_ENABLED
 #if AP_DDS_LOCAL_POSE_PUB_ENABLED
 #include "geometry_msgs/msg/PoseStamped.h"
 #endif // AP_DDS_LOCAL_POSE_PUB_ENABLED
@@ -236,6 +239,14 @@ private:
     //! @brief Serialize the current status and publish to the IO stream(s)
     void write_status_topic();
 #endif // AP_DDS_STATUS_PUB_ENABLED
+
+#if AP_DDS_RCOUT_PUB_ENABLED
+    ardupilot_msgs_msg_RCOut rcout_topic;
+    uint64_t last_rcout_time_ms;
+
+    void write_rcout_topic();
+    static void update_topic(ardupilot_msgs_msg_RCOut& msg);
+#endif // AP_DDS_RCOUT_PUB_ENABLED
 
 #if AP_DDS_STATIC_TF_PUB_ENABLED
     // outgoing transforms

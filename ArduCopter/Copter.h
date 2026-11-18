@@ -266,7 +266,7 @@ private:
     // helper function to get inertially interpolated rangefinder height.
     bool get_rangefinder_height_interpolated_m(float& ret) const;
 
-#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+#if AP_DDS_ENABLED && AP_DDS_DIRECT_PWM_SUB_ENABLED
     void direct_pwm_output();
 #endif
 #if AP_RANGEFINDER_ENABLED

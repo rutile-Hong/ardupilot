@@ -12,6 +12,7 @@
 #include <AP_RTC/AP_RTC.h>
 #include <AP_Math/AP_Math.h>
 #include <AP_InertialSensor/AP_InertialSensor.h>
+#include <AP_Logger/AP_Logger.h>
 #include <GCS_MAVLink/GCS.h>
 #include <AP_BattMonitor/AP_BattMonitor.h>
 #include <AP_RangeFinder/AP_RangeFinder.h>   // 0723
@@ -43,6 +44,9 @@
 #if AP_DDS_DIRECT_PWM_SUB_ENABLED
 #include "ardupilot_msgs/msg/DirectPWM.h"
 #endif // AP_DDS_DIRECT_PWM_SUB_ENABLED
+#if AP_DDS_RCOUT_PUB_ENABLED
+#include "ardupilot_msgs/msg/RCOut.h"
+#endif // AP_DDS_RCOUT_PUB_ENABLED
 
 #if AP_EXTERNAL_CONTROL_ENABLED
 #include "AP_DDS_ExternalControl.h"
@@ -92,6 +96,9 @@ static constexpr uint16_t DELAY_GOAL_TOPIC_MS = AP_DDS_DELAY_GOAL_TOPIC_MS ;
 #if AP_DDS_CLOCK_PUB_ENABLED
 static constexpr uint16_t DELAY_CLOCK_TOPIC_MS =AP_DDS_DELAY_CLOCK_TOPIC_MS;
 #endif // AP_DDS_CLOCK_PUB_ENABLED
+#if AP_DDS_RCOUT_PUB_ENABLED
+static constexpr uint16_t DELAY_RCOUT_TOPIC_MS =AP_DDS_DELAY_RCOUT_TOPIC_MS;
+#endif // AP_DDS_RCOUT_PUB_ENABLED
 #if AP_DDS_GPS_GLOBAL_ORIGIN_PUB_ENABLED
 static constexpr uint16_t DELAY_GPS_GLOBAL_ORIGIN_TOPIC_MS = AP_DDS_DELAY_GPS_GLOBAL_ORIGIN_TOPIC_MS;
 #endif // AP_DDS_GPS_GLOBAL_ORIGIN_PUB_ENABLED
@@ -463,12 +470,9 @@ bool AP_DDS_Client::update_topic(
     // Approximately 2 degrees in radians.
     msg.field_of_view = 0.035F;
 
-    // ArduPilot min/max accessors return centimeters.
-    msg.min_range =
-        static_cast<float>(backend->min_distance_cm()) * 0.01F;
-
-    msg.max_range =
-        static_cast<float>(backend->max_distance_cm()) * 0.01F;
+    // ArduPilot 4.7 rangefinder limits are expressed in meters.
+    msg.min_range = backend->min_distance();
+    msg.max_range = backend->max_distance();
 
     // backend->distance() is already meters.
     if (backend->status() == RangeFinder::Status::Good) {
@@ -755,6 +759,17 @@ void AP_DDS_Client::update_topic(rosgraph_msgs_msg_Clock& msg)
 }
 #endif // AP_DDS_CLOCK_PUB_ENABLED
 
+#if AP_DDS_RCOUT_PUB_ENABLED
+void AP_DDS_Client::update_topic(ardupilot_msgs_msg_RCOut& msg)
+{
+    update_topic(msg.header.stamp);
+
+    for (uint8_t channel = 0; channel < ARRAY_SIZE(msg.pwm); channel++) {
+        msg.pwm[channel] = hal.rcout->read(channel);
+    }
+}
+#endif // AP_DDS_RCOUT_PUB_ENABLED
+
 #if AP_DDS_GPS_GLOBAL_ORIGIN_PUB_ENABLED
 void AP_DDS_Client::update_topic(geographic_msgs_msg_GeoPointStamped& msg)
 {
@@ -789,18 +804,18 @@ bool AP_DDS_Client::update_topic(ardupilot_msgs_msg_Status& msg)
     uint8_t fs_iter = 0;
     msg.failsafe_size = 0;
     if (rc().in_rc_failsafe()) {
-        msg.failsafe[fs_iter++] = Status::FS_RADIO;
+        msg.failsafe[fs_iter++] = FS_RADIO;
     }
     if (battery.has_failsafed()) {
-        msg.failsafe[fs_iter++] = Status::FS_BATTERY;
+        msg.failsafe[fs_iter++] = FS_BATTERY;
     }
     // TODO: replace flag with function.
     if (AP_Notify::flags.failsafe_gcs) {
-        msg.failsafe[fs_iter++] = Status::FS_GCS;
+        msg.failsafe[fs_iter++] = FS_GCS;
     }
     // TODO: replace flag with function.
     if (AP_Notify::flags.failsafe_ekf) {
-        msg.failsafe[fs_iter++] = Status::FS_EKF;
+        msg.failsafe[fs_iter++] = FS_EKF;
     }
     msg.failsafe_size = fs_iter;
 
@@ -885,6 +900,7 @@ void AP_DDS_Client::on_topic(uxrSession* uxr_session, uxrObjectId object_id, uin
 
         if (rx_joy_topic.axes_size >= 4) {
             const uint32_t t_now = AP_HAL::millis();
+            uint16_t mapped_axes[8] {};
 
             for (uint8_t i = 0; i < MIN(8U, rx_joy_topic.axes_size); i++) {
                 // Ignore channel override if NaN.
@@ -898,8 +914,28 @@ void AP_DDS_Client::on_topic(uxrSession* uxr_session, uxrObjectId object_id, uin
                                                              rx_joy_topic.axes[i],
                                                              -1.0, 1.0));
                     RC_Channels::set_override(i, mapped_data, t_now);
+                    mapped_axes[i] = mapped_data;
                 }
             }
+
+            // Record every accepted DDS Joy command at the point where it is
+            // converted to an ArduPilot RC override.  PubUS is supplied by the
+            // ROS publisher; TimeUS is this firmware receipt time.  Together
+            // they make the DDS input delay and channel mapping observable in
+            // the DataFlash log without changing flight-control behaviour.
+            const uint64_t publish_timestamp_us =
+                uint64_t(rx_joy_topic.header.stamp.sec) * 1000000ULL +
+                uint64_t(rx_joy_topic.header.stamp.nanosec) / 1000ULL;
+            AP::logger().WriteStreaming(
+                "JYIN",
+                "TimeUS,PubUS,Roll,Throttle,C1,C3",
+                "QQffHH",
+                AP_HAL::micros64(),
+                publish_timestamp_us,
+                rx_joy_topic.axes[0],
+                rx_joy_topic.axes[2],
+                mapped_axes[0],
+                mapped_axes[2]);
 
         }
         break;
@@ -1165,13 +1201,13 @@ void AP_DDS_Client::on_request(uxrSession* uxr_session, uxrObjectId object_id, u
             bool param_isinf = true;
             float param_value = 0.0f;
             switch (param.value.type) {
-            case ParameterType::PARAMETER_INTEGER: {
+            case PARAMETER_INTEGER: {
                 param_isnan = isnan(param.value.integer_value);
                 param_isinf = isinf(param.value.integer_value);
                 param_value = float(param.value.integer_value);
                 break;
             }
-            case ParameterType::PARAMETER_DOUBLE: {
+            case PARAMETER_DOUBLE: {
                 param_isnan = isnan(param.value.double_value);
                 param_isinf = isinf(param.value.double_value);
                 param_value = float(param.value.double_value);
@@ -1265,38 +1301,38 @@ void AP_DDS_Client::on_request(uxrSession* uxr_session, uxrObjectId object_id, u
 
             vp = AP_Param::find(param_key, &var_type);
             if (vp == nullptr) {
-                get_parameters_response.values[i].type = ParameterType::PARAMETER_NOT_SET;
+                get_parameters_response.values[i].type = PARAMETER_NOT_SET;
                 successful_read &= false;
                 continue;
             }
 
             switch (var_type) {
             case AP_PARAM_INT8: {
-                get_parameters_response.values[i].type = ParameterType::PARAMETER_INTEGER;
+                get_parameters_response.values[i].type = PARAMETER_INTEGER;
                 get_parameters_response.values[i].integer_value = ((AP_Int8 *)vp)->get();
                 successful_read &= true;
                 break;
             }
             case AP_PARAM_INT16: {
-                get_parameters_response.values[i].type = ParameterType::PARAMETER_INTEGER;
+                get_parameters_response.values[i].type = PARAMETER_INTEGER;
                 get_parameters_response.values[i].integer_value = ((AP_Int16 *)vp)->get();
                 successful_read &= true;
                 break;
             }
             case AP_PARAM_INT32: {
-                get_parameters_response.values[i].type = ParameterType::PARAMETER_INTEGER;
+                get_parameters_response.values[i].type = PARAMETER_INTEGER;
                 get_parameters_response.values[i].integer_value = ((AP_Int32 *)vp)->get();
                 successful_read &= true;
                 break;
             }
             case AP_PARAM_FLOAT: {
-                get_parameters_response.values[i].type = ParameterType::PARAMETER_DOUBLE;
+                get_parameters_response.values[i].type = PARAMETER_DOUBLE;
                 get_parameters_response.values[i].double_value = vp->cast_to_float(var_type);
                 successful_read &= true;
                 break;
             }
             default: {
-                get_parameters_response.values[i].type = ParameterType::PARAMETER_NOT_SET;
+                get_parameters_response.values[i].type = PARAMETER_NOT_SET;
                 successful_read &= false;
                 break;
             }
@@ -1907,6 +1943,34 @@ void AP_DDS_Client::write_clock_topic()
 }
 #endif // AP_DDS_CLOCK_PUB_ENABLED
 
+#if AP_DDS_RCOUT_PUB_ENABLED
+void AP_DDS_Client::write_rcout_topic()
+{
+    WITH_SEMAPHORE(csem);
+
+    if (!connected) {
+        return;
+    }
+
+    ucdrBuffer ub {};
+    const uint32_t topic_size =
+        ardupilot_msgs_msg_RCOut_size_of_topic(&rcout_topic, 0);
+
+    const bool prepared = uxr_prepare_output_stream(
+        &session,
+        reliable_out,
+        topics[to_underlying(TopicIndex::RCOUT_PUB)].dw_id,
+        &ub,
+        topic_size);
+
+    if (!prepared) {
+        return;
+    }
+
+    ardupilot_msgs_msg_RCOut_serialize_topic(&ub, &rcout_topic);
+}
+#endif // AP_DDS_RCOUT_PUB_ENABLED
+
 #if AP_DDS_GPS_GLOBAL_ORIGIN_PUB_ENABLED
 void AP_DDS_Client::write_gps_global_origin_topic()
 {
@@ -2056,6 +2120,13 @@ void AP_DDS_Client::update()
         write_clock_topic();
     }
 #endif // AP_DDS_CLOCK_PUB_ENABLED
+#if AP_DDS_RCOUT_PUB_ENABLED
+    if (cur_time_ms - last_rcout_time_ms > DELAY_RCOUT_TOPIC_MS) {
+        update_topic(rcout_topic);
+        last_rcout_time_ms = cur_time_ms;
+        write_rcout_topic();
+    }
+#endif // AP_DDS_RCOUT_PUB_ENABLED
 #if AP_DDS_GPS_GLOBAL_ORIGIN_PUB_ENABLED
     if (cur_time_ms - last_gps_global_origin_time_ms > DELAY_GPS_GLOBAL_ORIGIN_TOPIC_MS) {
         update_topic(gps_global_origin_topic);

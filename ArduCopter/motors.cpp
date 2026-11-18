@@ -1,6 +1,6 @@
 #include "Copter.h"
 
-#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+#if AP_DDS_ENABLED && AP_DDS_DIRECT_PWM_SUB_ENABLED
 #include <AP_DDS/AP_DDS_Client.h>
 #endif
 
@@ -107,7 +107,7 @@ void Copter::motors_output(bool full_push)
     if (ap.motor_test) {
         // check if we are performing the motor test
         motor_test_output();
-#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+#if AP_DDS_ENABLED && AP_DDS_DIRECT_PWM_SUB_ENABLED
     } else if (dds_client != nullptr && dds_client->direct_pwm_active()) {
         direct_pwm_output();
 #endif
@@ -162,7 +162,7 @@ void Copter::lost_vehicle_check()
     }
 }
 
-#if AP_DDS_DIRECT_PWM_SUB_ENABLED
+#if AP_DDS_ENABLED && AP_DDS_DIRECT_PWM_SUB_ENABLED
 void Copter::direct_pwm_output()
 {
     constexpr uint16_t PWM_MIN = 1000;

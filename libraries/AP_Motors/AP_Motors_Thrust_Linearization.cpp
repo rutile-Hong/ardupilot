@@ -8,14 +8,11 @@
 
 #define AP_MOTORS_BATT_VOLT_FILT_HZ 0.5 // battery voltage filtered at 0.5hz
 
-#if APM_BUILD_TYPE(APM_BUILD_UNKNOWN)
-    // Example does not instantiate baro so cannot do density compensation
-    #define AP_MOTORS_DENSITY_COMP 0
-#else
-    #ifndef AP_MOTORS_DENSITY_COMP
-        #define AP_MOTORS_DENSITY_COMP 1
-    #endif
+#ifdef AP_MOTORS_DENSITY_COMP
+    #undef AP_MOTORS_DENSITY_COMP
 #endif
+
+#define AP_MOTORS_DENSITY_COMP 0
 
 #if APM_BUILD_TYPE(APM_BUILD_Heli)
     // defaults to no linearisation to not break users existing setups
